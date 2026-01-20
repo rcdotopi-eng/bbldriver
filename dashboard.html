@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Captain Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#28a745">
+    <link rel="stylesheet" href="style.css">
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+    <style>
+        /* DASHBOARD STYLES */
+        body { background: #f4f6f8; padding-bottom: 70px; margin: 0; font-family: sans-serif; }
+        .hidden { display: none !important; }
+        
+        /* TABS */
+        .bottom-nav {
+            position: fixed; bottom: 0; width: 100%; background: white;
+            display: flex; justify-content: space-around; padding: 10px 0;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1); border-top: 1px solid #eee;
+            z-index: 1000;
+        }
+        .nav-item { text-align: center; color: #999; font-size: 12px; cursor: pointer; flex: 1; }
+        .nav-item.active { color: #28a745; font-weight: bold; }
+        .nav-icon { font-size: 20px; display: block; margin-bottom: 2px; }
+
+        /* LIST ITEMS */
+        .job-card {
+            background: white; padding: 15px; margin: 10px 15px; border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-left: 5px solid #28a745;
+            cursor: pointer; position: relative;
+        }
+        .job-card.sent-offer { border-left-color: #e67e22; opacity: 0.8; }
+        .job-card.history-cancelled { border-left-color: #dc3545; opacity: 0.7; }
+        
+        .job-time { font-size: 12px; color: #888; float: right; }
+        .job-route { margin-top: 8px; font-size: 14px; }
+        .badge-offer { 
+            position: absolute; right: 15px; top: 40px; 
+            background: #e67e22; color: white; padding: 3px 8px; 
+            border-radius: 4px; font-size: 10px; 
+        }
+
+        /* DETAIL SCREENS */
+        .full-screen-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #f4f6f8; z-index: 2000; overflow-y: auto;
+            padding: 20px; box-sizing: border-box;
+        }
+        .info-box { background: white; padding: 15px; border-radius: 10px; margin-bottom: 15px; }
+        
+        /* BUTTONS */
+        .btn-action-row { display: flex; gap: 10px; margin-top: 15px; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn-primary { background: #28a745; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-nav { background: #17a2b8; color: white; }
+        .btn-call { background: #343a40; color: white; }
+    </style>
+</head>
+<body>
+
+    <div style="background: #28a745; color: white; padding: 15px 20px;">
+        <div style="display: flex; justify-content: space-between;">
+            <h2 style="margin:0;">🧢 Captain</h2>
+            <div id="gps-status" style="font-size: 12px; background: rgba(0,0,0,0.2); padding: 5px 10px; border-radius: 15px;">
+                GPS: Init...
+            </div>
+        </div>
+        <p id="driver-name-display" style="margin: 5px 0 0 0; font-size: 14px; opacity: 0.9;">Loading...</p>
+    </div>
+
+    <div id="tab-available" class="tab-content">
+        <div id="jobs-list" style="padding-top: 10px;">
+            <div style="text-align: center; padding: 40px; color: #999;">
+                Scanning for rides...<br>
+                <span style="font-size: 24px;">📡</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="tab-active" class="tab-content hidden" style="text-align: center; padding: 50px;">
+        <h3>No Active Ride</h3>
+        <p style="color:#777;">When a passenger confirms your offer, the ride will appear here.</p>
+    </div>
+
+    <div id="tab-history" class="tab-content hidden">
+        <h3 style="margin: 15px 15px 5px 15px; color:#555;">Recent Jobs</h3>
+        <div id="history-list">
+            <div style="text-align: center; padding: 20px; color: #ccc;">No history yet.</div>
+        </div>
+    </div>
+
+    <div class="bottom-nav">
+        <div id="nav-av" class="nav-item active" onclick="switchTab('available')">
+            <span class="nav-icon">📋</span>Available
+        </div>
+        <div id="nav-ac" class="nav-item" onclick="switchTab('active')">
+            <span class="nav-icon">⚡</span>Active
+        </div>
+        <div id="nav-hi" class="nav-item" onclick="switchTab('history')">
+            <span class="nav-icon">📜</span>History
+        </div>
+    </div>
+
+    <div id="view-job-detail" class="full-screen-modal hidden">
+        <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
+            <h2 style="margin:0;">Ride Details</h2>
+            <button onclick="closeDetailView()" style="width:auto; background:#ccc; color:#333;">Close</button>
+        </div>
+
+        <div class="info-box">
+            <p><strong>Time:</strong> <span id="det-time">...</span></p>
+            <hr style="border:0; border-top:1px solid #eee;">
+            <p><strong>🟢 Pickup:</strong> <br><span id="det-pickup">...</span></p>
+            <p><strong>🔴 Drop:</strong> <br><span id="det-drop">...</span></p>
+            <button class="btn-nav" onclick="navToPickup(tempJobData.pickup_lat, tempJobData.pickup_lng)">🗺️ See Location on Map</button>
+        </div>
+
+        <div class="info-box" style="border: 2px solid #28a745;">
+            <label><strong>Your Fare Offer (Rs.)</strong></label>
+            <input type="number" id="offer-amount" placeholder="e.g. 500" style="width:100%; padding:10px; font-size: 20px; font-weight: bold; color: #28a745; margin: 10px 0;">
+            <button id="btn-send-offer" class="btn-primary" onclick="sendOffer()">Send Offer</button>
+        </div>
+    </div>
+
+    <div id="view-active-ride" class="full-screen-modal hidden" style="background: white; z-index: 3000;">
+        <h2 style="color: #28a745; text-align: center; border-bottom: 2px solid #eee; padding-bottom: 15px;">⚡ Active Ride</h2>
+        
+        <div class="info-box" style="background: #f8f9fa;">
+            <h3 id="act-rider-name" style="margin-top:0;">Rider Name</h3>
+            <p><strong>Phone:</strong> <a id="act-phone-link" href="#">Call Rider</a></p>
+            <hr>
+            <p>🟢 <span id="act-pickup">...</span></p>
+            <p>🔴 <span id="act-drop">...</span></p>
+            <p><strong>Vehicle Req:</strong> <span id="act-vehicle">...</span></p>
+        </div>
+
+        <div class="btn-action-row">
+            <button class="btn-nav" onclick="navToPickup(activeRideData.pickup_lat, activeRideData.pickup_lng)">🗺️ Navigate</button>
+            <button class="btn-call" onclick="informRider()">📢 Inform Rider</button>
+        </div>
+
+        <hr style="margin: 20px 0;">
+
+        <button class="btn-primary" onclick="completeRide()">✅ Complete Ride</button>
+        <button class="btn-danger" onclick="cancelActiveRide()" style="margin-top: 15px;">❌ Cancel Ride</button>
+    </div>
+
+    <script src="firebase-init.js"></script>
+    <script>
+        // GLOBAL STATE
+        let driverProfile = null;
+        let driverGPS = null;
+        let tempJobData = null; // For the Offer Screen
+        let activeRideData = null; // For the Active Screen
+
+        // --- 1. STARTUP & AUTH ---
+        window.onload = () => {
+            const stored = localStorage.getItem("driverUser");
+            if (!stored) window.location.href = "index.html"; 
+            driverProfile = JSON.parse(stored);
+            
+            document.getElementById('driver-name-display').innerText = "Online: " + driverProfile.name;
+
+            initGPS();
+            startJobListener();
+            startActiveRideListener(); 
+        };
+
+        // --- 2. GPS SYSTEM ---
+        function initGPS() {
+            if (!navigator.geolocation) return alert("GPS Required");
+            navigator.geolocation.getCurrentPosition(updateLocation, console.error);
+            setInterval(() => {
+                navigator.geolocation.getCurrentPosition(updateLocation, console.error);
+            }, 60000); 
+        }
+
+        function updateLocation(pos) {
+            driverGPS = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            document.getElementById('gps-status').innerText = "GPS: Active 🟢";
+            
+            if (driverProfile && driverProfile.uid) { // Use uid from DB
+                db.ref('drivers_locations/' + driverProfile.uid).set({
+                    lat: driverGPS.lat,
+                    lng: driverGPS.lng,
+                    updated_at: firebase.database.ServerValue.TIMESTAMP
+                });
+            }
+        }
+
+        // --- 3. AVAILABLE JOBS LISTENER ---
+        function startJobListener() {
+            db.ref('requests').on('value', snapshot => {
+                const list = document.getElementById('jobs-list');
+                list.innerHTML = "";
+                
+                const jobsArray = [];
+                const now = Date.now();
+
+                snapshot.forEach(child => {
+                    const ride = child.val();
+                    ride.key = child.key;
+
+                    if (ride.status !== 'pending' && ride.status !== 'accepted') return;
+                    
+                    // Filter: Vehicle Type
+                    const myType = driverProfile.vehicle ? driverProfile.vehicle.type : "";
+                    if (ride.vehicle !== myType) return;
+
+                    // Filter: Time (5 hours)
+                    if (now - ride.timestamp > (5 * 60 * 60 * 1000)) return;
+
+                    // Filter: Distance (5km)
+                    if (driverGPS) {
+                        const dist = getDistance(driverGPS.lat, driverGPS.lng, ride.pickup_lat, ride.pickup_lng);
+                        if (dist > 5) return;
+                        ride.dist = dist.toFixed(1);
+                    } else {
+                        ride.dist = "?";
+                    }
+
+                    jobsArray.push(ride);
+                });
+
+                jobsArray.sort((a, b) => b.timestamp - a.timestamp);
+
+                if (jobsArray.length === 0) {
+                    list.innerHTML = `<div style="text-align:center; padding:30px; color:#999;">No rides nearby matching your vehicle.</div>`;
+                    return;
+                }
+
+                jobsArray.forEach(job => {
+                    // Check if I sent an offer
+                    // NOTE: using driverProfile.uid to match ID saved in DB
+                    const isMyOffer = (job.status === 'accepted' && job.driverId === driverProfile.uid); 
+                    const statusBadge = isMyOffer ? `<span class="badge-offer">Offer Sent ✅</span>` : ``;
+                    const cardClass = isMyOffer ? `job-card sent-offer` : `job-card`;
+                    const dateStr = new Date(job.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+                    const html = `
+                        <div class="${cardClass}" onclick="openJobDetail('${job.key}')">
+                            ${statusBadge}
+                            <span class="job-time">${dateStr}</span>
+                            <div style="font-weight:bold;">${job.vehicle} • ${job.dist} km</div>
+                            <div class="job-route">
+                                🟢 ${job.pickup}<br>
+                                🔴 ${job.drop}
+                            </div>
+                        </div>
+                    `;
+                    list.innerHTML += html;
+                });
+            });
+        }
+
+        // --- 4. JOB DETAIL & OFFER ---
+        function openJobDetail(key) {
+            db.ref('requests/' + key).once('value').then(snap => {
+                const r = snap.val();
+                if (!r) return;
+                
+                tempJobData = r;
+                tempJobData.key = key;
+
+                document.getElementById('det-time').innerText = new Date(r.timestamp).toLocaleString();
+                document.getElementById('det-pickup').innerText = r.pickup;
+                document.getElementById('det-drop').innerText = r.drop;
+                
+                document.getElementById('offer-amount').value = "";
+                const btn = document.getElementById('btn-send-offer');
+                btn.innerText = "Send Offer";
+                btn.disabled = false;
+
+                document.getElementById('view-job-detail').classList.remove('hidden');
+            });
+        }
+
+        function closeDetailView() {
+            document.getElementById('view-job-detail').classList.add('hidden');
+        }
+
+        function sendOffer() {
+            const amount = document.getElementById('offer-amount').value;
+            if (!amount) return alert("Enter a fare amount.");
+
+            const btn = document.getElementById('btn-send-offer');
+            btn.innerText = "Sending...";
+            btn.disabled = true;
+
+            const updates = {
+                status: 'accepted',
+                driverId: driverProfile.uid, // Use UID from profile
+                driverName: driverProfile.name,
+                vehicleModel: driverProfile.vehicle.model,
+                vehiclePlate: driverProfile.vehicle.plate,
+                driverPhone: driverProfile.phone,
+                price: amount
+            };
+
+            db.ref('requests/' + tempJobData.key).update(updates).then(() => {
+                alert("Offer Sent!");
+                closeDetailView();
+            });
+        }
+
+        // --- 5. ACTIVE RIDE LISTENER (Interrupt) ---
+        function startActiveRideListener() {
+            // Watch requests where I am the driver
+            db.ref('requests').orderByChild('driverId').equalTo(driverProfile.uid)
+              .on('value', snap => {
+                  let foundActive = false;
+                  snap.forEach(child => {
+                      const r = child.val();
+                      if (r.status === 'confirmed') {
+                          foundActive = true;
+                          activeRideData = r;
+                          activeRideData.key = child.key;
+                          launchActiveScreen();
+                      }
+                  });
+
+                  if (!foundActive) {
+                      document.getElementById('view-active-ride').classList.add('hidden');
+                  }
+              });
+        }
+
+        function launchActiveScreen() {
+            document.getElementById('view-active-ride').classList.remove('hidden');
+            document.getElementById('act-rider-name').innerText = activeRideData.riderName || "Passenger";
+            document.getElementById('act-pickup').innerText = activeRideData.pickup;
+            document.getElementById('act-drop').innerText = activeRideData.drop;
+            document.getElementById('act-vehicle').innerText = activeRideData.vehicle;
+            
+            const phoneBtn = document.getElementById('act-phone-link');
+            phoneBtn.href = "tel:" + activeRideData.riderPhone;
+            phoneBtn.innerText = activeRideData.riderPhone || "No Phone";
+        }
+
+        // --- 6. ACTIONS (Complete / Cancel) ---
+        function informRider() {
+            alert("Sent Notification:\nI am coming (" + driverProfile.vehicle.model + ")");
+        }
+
+        function completeRide() {
+            if(!confirm("Finish this ride?")) return;
+            
+            db.ref('requests/' + activeRideData.key).update({
+                status: 'completed'
+            }).then(() => {
+                document.getElementById('view-active-ride').classList.add('hidden');
+                switchTab('available'); 
+                addToHistory(activeRideData, 'completed');
+            });
+        }
+
+        // --- 7. CANCEL LOGIC (Specific Request) ---
+        function cancelActiveRide() {
+            if(!confirm("Cancel this ride? Penalty may apply.")) return;
+
+            db.ref('requests/' + activeRideData.key).update({
+                status: 'cancelled_by_driver'
+            }).then(() => {
+                // 1. Hide the active screen
+                document.getElementById('view-active-ride').classList.add('hidden');
+                
+                // 2. Switch back to available tab
+                switchTab('available'); 
+                
+                // 3. Move to History with RED status
+                addToHistory(activeRideData, 'cancelled');
+            });
+        }
+
+        // --- 8. HISTORY LOGIC ---
+        function addToHistory(ride, status) {
+            const list = document.getElementById('history-list');
+            // Remove "No history" text if present
+            if(list.innerText.includes("No history")) list.innerHTML = "";
+
+            const color = status === 'completed' ? '#28a745' : '#dc3545';
+            const html = `
+                <div class="job-card" style="border-left-color: ${color}; opacity: 0.8; cursor: default;">
+                    <div style="display:flex; justify-content:space-between;">
+                        <strong style="color:${color}">${status.toUpperCase()}</strong>
+                        <span style="font-size:12px;">${new Date().toLocaleTimeString()}</span>
+                    </div>
+                    <div style="margin-top:5px;">${ride.pickup}</div>
+                    <div style="margin-bottom:5px;">⬇️ ${ride.drop}</div>
+                    <div style="font-size:12px; color:#666;">Fare: Rs. ${ride.price}</div>
+                </div>
+            `;
+            list.innerHTML = html + list.innerHTML;
+        }
+
+        // --- UTILS ---
+        function navToPickup(lat, lng) {
+            window.open(`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`, '_blank');
+        }
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; 
+            const dLat = (lat2-lat1) * (Math.PI/180);
+            const dLon = (lon2-lon1) * (Math.PI/180);
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1*(Math.PI/180)) * Math.cos(lat2*(Math.PI/180)) * Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+        }
+
+        function switchTab(tabId) {
+            ['available', 'active', 'history'].forEach(t => document.getElementById('tab-'+t).classList.add('hidden'));
+            document.getElementById('tab-'+tabId).classList.remove('hidden');
+            
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            if(tabId==='available') document.getElementById('nav-av').classList.add('active');
+            if(tabId==='active') document.getElementById('nav-ac').classList.add('active');
+            if(tabId==='history') document.getElementById('nav-hi').classList.add('active');
+        }
+    </script>
+</body>
+</html>

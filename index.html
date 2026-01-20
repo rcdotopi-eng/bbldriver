@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>RideLink - Captain Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#28a745"> <link rel="stylesheet" href="style.css">
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+</head>
+<body>
+
+    <div class="container" style="justify-content: center; text-align: center;">
+        
+        <div style="font-size: 60px; margin-bottom: 10px;">🧢</div>
+        <h1>Captain App</h1>
+
+        <div id="view-login" class="card">
+            <h3>Captain Portal</h3>
+            <p style="color: #666; font-size: 14px; margin-bottom: 20px;">
+                Earn money driving with RideLink.
+            </p>
+
+            <button class="btn-primary" onclick="loginWithGoogle()" style="background: white; color: #444; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20">
+                Continue with Google
+            </button>
+            
+            <p id="status-text" style="margin-top: 15px; font-size: 12px; color: #999;"></p>
+        </div>
+
+        <div id="view-register" class="card" style="display: none; text-align: left;">
+            <h3 style="margin-top:0; color: #28a745;">Captain Registration</h3>
+            <p style="font-size: 13px; color: #666;">Enter vehicle details to join.</p>
+
+            <div class="input-group">
+                <label>Full Name</label>
+                <input type="text" id="reg-name">
+            </div>
+            
+            <div class="input-group">
+                <label>Phone Number</label>
+                <input type="tel" id="reg-phone" placeholder="03xx-xxxxxxx" oninput="formatPhone(this)">
+            </div>
+
+            <div class="input-group">
+                <label>Vehicle Type</label>
+                <select id="reg-vehicle-type" style="width: 100%; padding: 14px; border: 2px solid #e0e0e0; border-radius: 12px; background: white;">
+                    <option value="Bike">Bike 🏍️</option>
+                    <option value="Rickshaw">Rickshaw 🛺</option>
+                    <option value="Car">Car 🚗</option>
+                    <option value="AC Car">AC Car ❄️</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label>Vehicle Model (e.g. Honda CD70)</label>
+                <input type="text" id="reg-model">
+            </div>
+
+            <div class="input-group">
+                <label>Plate Number (e.g. ABC-123)</label>
+                <input type="text" id="reg-plate">
+            </div>
+
+            <hr style="border-top: 1px dashed #ddd; margin: 20px 0;">
+
+            <div style="background: #e9f7ef; padding: 15px; border-radius: 8px; border: 1px solid #c3e6cb; margin-bottom: 20px;">
+                <h4 style="margin:0 0 5px 0; color: #155724;">🎁 Joining Bonus</h4>
+                <p style="font-size: 13px; margin: 0; color: #155724;">
+                    Your account will be credited with <strong>Rs. 1000</strong> upon approval.
+                </p>
+                <p style="font-size: 12px; margin-top: 10px; color: #666;">
+                    * Approval usually takes 2-4 hours.
+                </p>
+            </div>
+
+            <button class="btn-green" onclick="submitRegistration()" style="background-color: #28a745;">
+                Submit Application
+            </button>
+        </div>
+
+        <div id="view-pending" class="card" style="display: none;">
+            <div style="font-size: 50px;">⏳</div>
+            <h3 style="color: #e67e22;">Verification Pending</h3>
+            <p style="color: #666; font-size: 14px;">
+                We are verifying your documents and vehicle details.<br>
+            </p>
+            <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; font-size: 12px; margin-top: 20px;">
+                <strong>Admin WhatsApp:</strong><br>0314-6415764
+            </div>
+            <button onclick="location.reload()" style="margin-top: 20px; background: none; border: 1px solid #ddd; padding: 10px; width: 100%;">
+                Check Status Again
+            </button>
+        </div>
+
+    </div>
+
+    <script src="firebase-init.js"></script>
+    <script>
+        let existingData = null;
+
+        // --- 1. LOGIN ---
+        function loginWithGoogle() {
+            const btn = document.querySelector('.btn-primary');
+            const txt = document.getElementById('status-text');
+            btn.disabled = true; btn.style.opacity = "0.5"; txt.innerText = "Connecting...";
+
+            firebase.auth().signOut().then(() => {
+                const provider = new firebase.auth.GoogleAuthProvider();
+                provider.setCustomParameters({ prompt: 'select_account' });
+                return firebase.auth().signInWithPopup(provider);
+            }).then((result) => {
+                checkDatabase(result.user.uid);
+            }).catch((error) => {
+                alert("Login Error: " + error.message);
+                btn.disabled = false; btn.style.opacity = "1"; txt.innerText = "";
+            });
+        }
+
+        // --- 2. CHECK DATABASE ---
+        function checkDatabase(uid) {
+            db.ref('users/' + uid).once('value').then((snapshot) => {
+                document.getElementById('view-login').style.display = 'none';
+
+                if (snapshot.exists()) {
+                    existingData = snapshot.val();
+                    localStorage.setItem("driverUser", JSON.stringify(existingData));
+
+                    // LOGIC: Check DRIVER Status
+                    if (existingData.driverStatus === 'active') {
+                        // SUCCESS: Go to Dashboard
+                        window.location.href = "dashboard.html"; 
+                    } else if (existingData.driverStatus === 'pending') {
+                        document.getElementById('view-pending').style.display = 'block';
+                    } else {
+                        // User exists (maybe a Rider) but not a Driver
+                        showRegistration(true);
+                    }
+                } else {
+                    // New User
+                    showRegistration(false);
+                }
+            });
+        }
+
+        function showRegistration(isUpgrade) {
+            document.getElementById('view-register').style.display = 'block';
+            
+            const user = firebase.auth().currentUser;
+            if(user) {
+                document.getElementById('reg-name').value = user.displayName;
+            }
+
+            if(isUpgrade && existingData && existingData.phone) {
+                document.getElementById('reg-phone').value = existingData.phone;
+            }
+        }
+
+        // --- 3. SUBMIT REGISTRATION ---
+        function submitRegistration() {
+            const user = firebase.auth().currentUser;
+            if (!user) return alert("Session expired. Please refresh.");
+
+            const name = document.getElementById('reg-name').value;
+            const phone = document.getElementById('reg-phone').value;
+            const vType = document.getElementById('reg-vehicle-type').value;
+            const vModel = document.getElementById('reg-model').value;
+            const vPlate = document.getElementById('reg-plate').value;
+            
+            if(!name || !phone || !vModel || !vPlate) return alert("Please fill all fields.");
+
+            const updates = {
+                name: name,
+                phone: phone,
+                email: user.email,
+                driverStatus: 'pending', // Set DRIVER status
+                vehicle: {
+                    type: vType,
+                    model: vModel,
+                    plate: vPlate
+                }
+            };
+
+            // Bonus logic for new drivers
+            if(!existingData || !existingData.wallet) {
+                updates.joined = firebase.database.ServerValue.TIMESTAMP;
+                updates.wallet = 1000; // Rs. 1000 Joining Bonus
+            }
+
+            db.ref('users/' + user.uid).update(updates).then(() => {
+                document.getElementById('view-register').style.display = 'none';
+                document.getElementById('view-pending').style.display = 'block';
+            }).catch(err => {
+                alert("Error: " + err.message);
+            });
+        }
+
+        function formatPhone(input) {
+            let v = input.value.replace(/\D/g, ''); 
+            if (v.length > 11) v = v.slice(0, 11);
+            if (v.length > 4) v = v.slice(0, 4) + "-" + v.slice(4);
+            input.value = v;
+        }
+
+        firebase.auth().onAuthStateChanged((user) => {
+            if (user) {
+                checkDatabase(user.uid);
+            }
+        });
+    </script>
+</body>
+</html>
