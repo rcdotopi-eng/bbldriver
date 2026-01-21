@@ -120,12 +120,18 @@
         }
 
         // --- 2. CHECK DATABASE ---
+        // --- 2. CHECK DATABASE ---
         function checkDatabase(uid) {
             db.ref('users/' + uid).once('value').then((snapshot) => {
                 document.getElementById('view-login').style.display = 'none';
 
                 if (snapshot.exists()) {
                     existingData = snapshot.val();
+                    
+                    // --- CRITICAL FIX: Add the UID manually ---
+                    existingData.uid = uid; 
+                    // ------------------------------------------
+
                     localStorage.setItem("driverUser", JSON.stringify(existingData));
 
                     // LOGIC: Check DRIVER Status
@@ -211,4 +217,5 @@
         });
     </script>
 </body>
+
 </html>
