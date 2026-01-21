@@ -291,19 +291,31 @@
             btn.innerText = "Sending...";
             btn.disabled = true;
 
-            const updates = {
-                status: 'accepted',
-                driverId: driverProfile.uid, // Use UID from profile
+            // 1. Create the Offer Data Object
+            const offerData = {
                 driverName: driverProfile.name,
+                driverPhone: driverProfile.phone,
                 vehicleModel: driverProfile.vehicle.model,
                 vehiclePlate: driverProfile.vehicle.plate,
-                driverPhone: driverProfile.phone,
-                price: amount
+                price: amount,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
             };
 
-            db.ref('requests/' + tempJobData.key).update(updates).then(() => {
-                alert("Offer Sent!");
+            // 2. Save it to a specific path: requests/{rideID}/offers/{driverID}
+            // This prevents overwriting other drivers' offers
+            db.ref('requests/' + tempJobData.key + '/offers/' + driverProfile.uid).set(offerData)
+            .then(() => {
+                alert("Offer Sent! Waiting for rider to confirm.");
                 closeDetailView();
+                
+                // Reset button for next time
+                btn.innerText = "Send Offer";
+                btn.disabled = false;
+            })
+            .catch(err => {
+                alert("Error sending offer: " + err.message);
+                btn.innerText = "Send Offer";
+                btn.disabled = false;
             });
         }
 
@@ -422,4 +434,5 @@
         }
     </script>
 </body>
+
 </html>
