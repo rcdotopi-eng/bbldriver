@@ -166,9 +166,72 @@
             document.getElementById('driver-name-display').innerText = "Online: " + driverProfile.name;
 
             initGPS();
-            startJobListener();
-            startActiveRideListener(); 
-        };
+           // --- 3. AVAILABLE JOBS LISTENER (Updated for Multiple Offers) ---
+        function startJobListener() {
+            db.ref('requests').on('value', snapshot => {
+                const list = document.getElementById('jobs-list');
+                list.innerHTML = "";
+                
+                const jobsArray = [];
+                const now = Date.now();
+
+                snapshot.forEach(child => {
+                    const ride = child.val();
+                    ride.key = child.key;
+
+                    // FILTER 1: Show Pending (or confirmed if it's OURS)
+                    if (ride.status !== 'pending' && ride.status !== 'confirmed') return;
+
+                    // FILTER 2: Vehicle Type
+                    const myType = driverProfile.vehicle ? driverProfile.vehicle.type : "";
+                    if (ride.vehicle !== myType) return;
+
+                    // FILTER 3: Time (24 Hours for testing)
+                    if (now - ride.timestamp > (24 * 60 * 60 * 1000)) return;
+
+                    // FILTER 4: Distance
+                    if (driverGPS) {
+                        const dist = getDistance(driverGPS.lat, driverGPS.lng, ride.pickup_lat, ride.pickup_lng);
+                        if (dist > 500) return; // Increased for testing
+                        ride.dist = dist.toFixed(1);
+                    } else {
+                        ride.dist = "?";
+                    }
+
+                    jobsArray.push(ride);
+                });
+
+                jobsArray.sort((a, b) => b.timestamp - a.timestamp);
+
+                if (jobsArray.length === 0) {
+                    list.innerHTML = `<div style="text-align:center; padding:30px; color:#999;">No rides nearby matching your vehicle.</div>`;
+                    return;
+                }
+
+                jobsArray.forEach(job => {
+                    // --- CRITICAL FIX: Check nested offers list ---
+                    const isMyOffer = (job.offers && job.offers[driverProfile.uid]);
+                    
+                    // Visual changes if offer sent
+                    const statusBadge = isMyOffer ? `<span class="badge-offer" style="background:#28a745;">Offer Sent ✅</span>` : ``;
+                    const cardClass = isMyOffer ? `job-card sent-offer` : `job-card`;
+                    const dateStr = new Date(job.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+                    const html = `
+                        <div class="${cardClass}" onclick="openJobDetail('${job.key}')">
+                            ${statusBadge}
+                            <span class="job-time">${dateStr}</span>
+                            <div style="font-weight:bold;">${job.vehicle} • ${job.dist} km</div>
+                            <div class="job-route">
+                                🟢 ${job.pickup}<br>
+                                🔴 ${job.drop}
+                            </div>
+                        </div>
+                    `;
+                    list.innerHTML += html;
+                });
+            });
+        }
 
         // --- 2. GPS SYSTEM ---
         function initGPS() {
@@ -257,7 +320,7 @@
             });
         }
 
-        // --- 4. JOB DETAIL & OFFER ---
+        // --- 4. JOB DETAIL & OFFER (Updated) ---
         function openJobDetail(key) {
             db.ref('requests/' + key).once('value').then(snap => {
                 const r = snap.val();
@@ -270,15 +333,32 @@
                 document.getElementById('det-pickup').innerText = r.pickup;
                 document.getElementById('det-drop').innerText = r.drop;
                 
-                document.getElementById('offer-amount').value = "";
                 const btn = document.getElementById('btn-send-offer');
-                btn.innerText = "Send Offer";
-                btn.disabled = false;
+                const input = document.getElementById('offer-amount');
+
+                // --- CRITICAL FIX: Check if I already sent an offer ---
+                if (r.offers && r.offers[driverProfile.uid]) {
+                    // Offer Exists: Disable inputs
+                    const myOffer = r.offers[driverProfile.uid];
+                    input.value = myOffer.price;
+                    input.disabled = true;
+                    
+                    btn.innerText = "Offer Already Sent";
+                    btn.disabled = true;
+                    btn.style.background = "#6c757d"; // Grey color
+                } else {
+                    // No Offer: Enable inputs
+                    input.value = "";
+                    input.disabled = false;
+                    
+                    btn.innerText = "Send Offer";
+                    btn.disabled = false;
+                    btn.style.background = "#28a745"; // Green color
+                }
 
                 document.getElementById('view-job-detail').classList.remove('hidden');
             });
         }
-
         function closeDetailView() {
             document.getElementById('view-job-detail').classList.add('hidden');
         }
@@ -436,3 +516,4 @@
 </body>
 
 </html>
+
