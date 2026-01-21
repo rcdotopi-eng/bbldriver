@@ -32,14 +32,14 @@
             box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-left: 5px solid #28a745;
             cursor: pointer; position: relative;
         }
-        .job-card.sent-offer { border-left-color: #e67e22; opacity: 0.8; }
+        .job-card.sent-offer { border-left-color: #e67e22; opacity: 0.9; background: #fffdf9; }
         .job-card.history-cancelled { border-left-color: #dc3545; opacity: 0.7; }
         
         .job-time { font-size: 12px; color: #888; float: right; }
         .job-route { margin-top: 8px; font-size: 14px; }
         .badge-offer { 
             position: absolute; right: 15px; top: 40px; 
-            background: #e67e22; color: white; padding: 3px 8px; 
+            background: #28a745; color: white; padding: 3px 8px; 
             border-radius: 4px; font-size: 10px; 
         }
 
@@ -121,7 +121,7 @@
 
         <div class="info-box" style="border: 2px solid #28a745;">
             <label><strong>Your Fare Offer (Rs.)</strong></label>
-            <input type="number" id="offer-amount" placeholder="e.g. 500" style="width:100%; padding:10px; font-size: 20px; font-weight: bold; color: #28a745; margin: 10px 0;">
+            <input type="number" id="offer-amount" placeholder="e.g. 500" style="width:100%; padding:10px; font-size: 20px; font-weight: bold; color: #28a745; margin: 10px 0; box-sizing: border-box;">
             <button id="btn-send-offer" class="btn-primary" onclick="sendOffer()">Send Offer</button>
         </div>
     </div>
@@ -166,7 +166,33 @@
             document.getElementById('driver-name-display').innerText = "Online: " + driverProfile.name;
 
             initGPS();
-           // --- 3. AVAILABLE JOBS LISTENER (Updated for Multiple Offers) ---
+            startJobListener();
+            startActiveRideListener(); 
+        };
+
+        // --- 2. GPS SYSTEM ---
+        function initGPS() {
+            if (!navigator.geolocation) return alert("GPS Required");
+            navigator.geolocation.getCurrentPosition(updateLocation, console.error);
+            setInterval(() => {
+                navigator.geolocation.getCurrentPosition(updateLocation, console.error);
+            }, 60000); 
+        }
+
+        function updateLocation(pos) {
+            driverGPS = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            document.getElementById('gps-status').innerText = "GPS: Active 🟢";
+            
+            if (driverProfile && driverProfile.uid) { 
+                db.ref('drivers_locations/' + driverProfile.uid).set({
+                    lat: driverGPS.lat,
+                    lng: driverGPS.lng,
+                    updated_at: firebase.database.ServerValue.TIMESTAMP
+                });
+            }
+        }
+
+        // --- 3. AVAILABLE JOBS LISTENER (Updated for Multiple Offers) ---
         function startJobListener() {
             db.ref('requests').on('value', snapshot => {
                 const list = document.getElementById('jobs-list');
@@ -192,7 +218,7 @@
                     // FILTER 4: Distance
                     if (driverGPS) {
                         const dist = getDistance(driverGPS.lat, driverGPS.lng, ride.pickup_lat, ride.pickup_lng);
-                        if (dist > 500) return; // Increased for testing
+                        if (dist > 500) return; 
                         ride.dist = dist.toFixed(1);
                     } else {
                         ride.dist = "?";
@@ -209,97 +235,9 @@
                 }
 
                 jobsArray.forEach(job => {
-                    // --- CRITICAL FIX: Check nested offers list ---
+                    // Check nested offers list
                     const isMyOffer = (job.offers && job.offers[driverProfile.uid]);
                     
-                    // Visual changes if offer sent
-                    const statusBadge = isMyOffer ? `<span class="badge-offer" style="background:#28a745;">Offer Sent ✅</span>` : ``;
-                    const cardClass = isMyOffer ? `job-card sent-offer` : `job-card`;
-                    const dateStr = new Date(job.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-
-                    const html = `
-                        <div class="${cardClass}" onclick="openJobDetail('${job.key}')">
-                            ${statusBadge}
-                            <span class="job-time">${dateStr}</span>
-                            <div style="font-weight:bold;">${job.vehicle} • ${job.dist} km</div>
-                            <div class="job-route">
-                                🟢 ${job.pickup}<br>
-                                🔴 ${job.drop}
-                            </div>
-                        </div>
-                    `;
-                    list.innerHTML += html;
-                });
-            });
-        }
-
-        // --- 2. GPS SYSTEM ---
-        function initGPS() {
-            if (!navigator.geolocation) return alert("GPS Required");
-            navigator.geolocation.getCurrentPosition(updateLocation, console.error);
-            setInterval(() => {
-                navigator.geolocation.getCurrentPosition(updateLocation, console.error);
-            }, 60000); 
-        }
-
-        function updateLocation(pos) {
-            driverGPS = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-            document.getElementById('gps-status').innerText = "GPS: Active 🟢";
-            
-            if (driverProfile && driverProfile.uid) { // Use uid from DB
-                db.ref('drivers_locations/' + driverProfile.uid).set({
-                    lat: driverGPS.lat,
-                    lng: driverGPS.lng,
-                    updated_at: firebase.database.ServerValue.TIMESTAMP
-                });
-            }
-        }
-
-        // --- 3. AVAILABLE JOBS LISTENER ---
-        function startJobListener() {
-            db.ref('requests').on('value', snapshot => {
-                const list = document.getElementById('jobs-list');
-                list.innerHTML = "";
-                
-                const jobsArray = [];
-                const now = Date.now();
-
-                snapshot.forEach(child => {
-                    const ride = child.val();
-                    ride.key = child.key;
-
-                    if (ride.status !== 'pending' && ride.status !== 'accepted') return;
-                    
-                    // Filter: Vehicle Type
-                    const myType = driverProfile.vehicle ? driverProfile.vehicle.type : "";
-                    if (ride.vehicle !== myType) return;
-
-                    // Filter: Time (5 hours)
-                    if (now - ride.timestamp > (5 * 60 * 60 * 1000)) return;
-
-                    // Filter: Distance (5km)
-                    if (driverGPS) {
-                        const dist = getDistance(driverGPS.lat, driverGPS.lng, ride.pickup_lat, ride.pickup_lng);
-                        if (dist > 5) return;
-                        ride.dist = dist.toFixed(1);
-                    } else {
-                        ride.dist = "?";
-                    }
-
-                    jobsArray.push(ride);
-                });
-
-                jobsArray.sort((a, b) => b.timestamp - a.timestamp);
-
-                if (jobsArray.length === 0) {
-                    list.innerHTML = `<div style="text-align:center; padding:30px; color:#999;">No rides nearby matching your vehicle.</div>`;
-                    return;
-                }
-
-                jobsArray.forEach(job => {
-                    // Check if I sent an offer
-                    // NOTE: using driverProfile.uid to match ID saved in DB
-                    const isMyOffer = (job.status === 'accepted' && job.driverId === driverProfile.uid); 
                     const statusBadge = isMyOffer ? `<span class="badge-offer">Offer Sent ✅</span>` : ``;
                     const cardClass = isMyOffer ? `job-card sent-offer` : `job-card`;
                     const dateStr = new Date(job.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
@@ -336,33 +274,33 @@
                 const btn = document.getElementById('btn-send-offer');
                 const input = document.getElementById('offer-amount');
 
-                // --- CRITICAL FIX: Check if I already sent an offer ---
+                // Check if I already sent an offer
                 if (r.offers && r.offers[driverProfile.uid]) {
-                    // Offer Exists: Disable inputs
                     const myOffer = r.offers[driverProfile.uid];
                     input.value = myOffer.price;
                     input.disabled = true;
                     
                     btn.innerText = "Offer Already Sent";
                     btn.disabled = true;
-                    btn.style.background = "#6c757d"; // Grey color
+                    btn.style.background = "#6c757d"; 
                 } else {
-                    // No Offer: Enable inputs
                     input.value = "";
                     input.disabled = false;
                     
                     btn.innerText = "Send Offer";
                     btn.disabled = false;
-                    btn.style.background = "#28a745"; // Green color
+                    btn.style.background = "#28a745"; 
                 }
 
                 document.getElementById('view-job-detail').classList.remove('hidden');
             });
         }
+
         function closeDetailView() {
             document.getElementById('view-job-detail').classList.add('hidden');
         }
 
+        // --- 5. SEND OFFER FUNCTION (Fixed for List) ---
         function sendOffer() {
             const amount = document.getElementById('offer-amount').value;
             if (!amount) return alert("Enter a fare amount.");
@@ -371,7 +309,6 @@
             btn.innerText = "Sending...";
             btn.disabled = true;
 
-            // 1. Create the Offer Data Object
             const offerData = {
                 driverName: driverProfile.name,
                 driverPhone: driverProfile.phone,
@@ -381,14 +318,11 @@
                 timestamp: firebase.database.ServerValue.TIMESTAMP
             };
 
-            // 2. Save it to a specific path: requests/{rideID}/offers/{driverID}
-            // This prevents overwriting other drivers' offers
             db.ref('requests/' + tempJobData.key + '/offers/' + driverProfile.uid).set(offerData)
             .then(() => {
                 alert("Offer Sent! Waiting for rider to confirm.");
                 closeDetailView();
-                
-                // Reset button for next time
+                // Reset button UI for next time
                 btn.innerText = "Send Offer";
                 btn.disabled = false;
             })
@@ -399,9 +333,8 @@
             });
         }
 
-        // --- 5. ACTIVE RIDE LISTENER (Interrupt) ---
+        // --- 6. ACTIVE RIDE LISTENER (Interrupt) ---
         function startActiveRideListener() {
-            // Watch requests where I am the driver
             db.ref('requests').orderByChild('driverId').equalTo(driverProfile.uid)
               .on('value', snap => {
                   let foundActive = false;
@@ -433,7 +366,7 @@
             phoneBtn.innerText = activeRideData.riderPhone || "No Phone";
         }
 
-        // --- 6. ACTIONS (Complete / Cancel) ---
+        // --- 7. ACTIONS (Complete / Cancel) ---
         function informRider() {
             alert("Sent Notification:\nI am coming (" + driverProfile.vehicle.model + ")");
         }
@@ -450,20 +383,14 @@
             });
         }
 
-        // --- 7. CANCEL LOGIC (Specific Request) ---
         function cancelActiveRide() {
             if(!confirm("Cancel this ride? Penalty may apply.")) return;
 
             db.ref('requests/' + activeRideData.key).update({
                 status: 'cancelled_by_driver'
             }).then(() => {
-                // 1. Hide the active screen
                 document.getElementById('view-active-ride').classList.add('hidden');
-                
-                // 2. Switch back to available tab
                 switchTab('available'); 
-                
-                // 3. Move to History with RED status
                 addToHistory(activeRideData, 'cancelled');
             });
         }
@@ -471,7 +398,6 @@
         // --- 8. HISTORY LOGIC ---
         function addToHistory(ride, status) {
             const list = document.getElementById('history-list');
-            // Remove "No history" text if present
             if(list.innerText.includes("No history")) list.innerHTML = "";
 
             const color = status === 'completed' ? '#28a745' : '#dc3545';
@@ -514,6 +440,4 @@
         }
     </script>
 </body>
-
 </html>
-
