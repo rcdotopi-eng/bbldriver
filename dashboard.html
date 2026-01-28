@@ -168,6 +168,7 @@
             initGPS();
             startJobListener();
             startActiveRideListener(); 
+            startHistoryListener();
         };
 
         // --- 2. GPS SYSTEM ---
@@ -396,24 +397,59 @@
         }
 
         // --- 8. HISTORY LOGIC ---
-        function addToHistory(ride, status) {
-            const list = document.getElementById('history-list');
-            if(list.innerText.includes("No history")) list.innerHTML = "";
+        function startHistoryListener() {
+  db.ref('requests')
+    .orderByChild('driverId')
+    .equalTo(driverProfile.uid)
+    .on('value', snapshot => {
 
-            const color = status === 'completed' ? '#28a745' : '#dc3545';
-            const html = `
-                <div class="job-card" style="border-left-color: ${color}; opacity: 0.8; cursor: default;">
-                    <div style="display:flex; justify-content:space-between;">
-                        <strong style="color:${color}">${status.toUpperCase()}</strong>
-                        <span style="font-size:12px;">${new Date().toLocaleTimeString()}</span>
-                    </div>
-                    <div style="margin-top:5px;">${ride.pickup}</div>
-                    <div style="margin-bottom:5px;">⬇️ ${ride.drop}</div>
-                    <div style="font-size:12px; color:#666;">Fare: Rs. ${ride.price}</div>
-                </div>
-            `;
-            list.innerHTML = html + list.innerHTML;
+      const list = document.getElementById('history-list');
+      list.innerHTML = "";
+
+      let found = false;
+
+      snapshot.forEach(child => {
+        const r = child.val();
+
+        if (
+          r.status === 'completed' ||
+          r.status === 'cancelled_by_driver' ||
+          r.status === 'cancelled_by_rider'
+        ) {
+          found = true;
+
+          const isCompleted = r.status === 'completed';
+          const color = isCompleted ? '#28a745' : '#dc3545';
+          const label = isCompleted ? 'COMPLETED' : 'CANCELLED';
+
+          const html = `
+            <div class="job-card" style="border-left-color:${color}; opacity:0.85;">
+              <div style="display:flex; justify-content:space-between;">
+                <strong style="color:${color}">${label}</strong>
+                <span style="font-size:12px;">
+                  ${new Date(r.timestamp).toLocaleTimeString()}
+                </span>
+              </div>
+              <div style="margin-top:6px;">🟢 ${r.pickup}</div>
+              <div>🔴 ${r.drop}</div>
+              <div style="font-size:12px; color:#666;">
+                Fare: Rs. ${r.price || '-'}
+              </div>
+            </div>
+          `;
+
+          list.innerHTML = html + list.innerHTML;
         }
+      });
+
+      if (!found) {
+        list.innerHTML = `<div style="text-align:center; color:#aaa; padding:20px;">
+          No ride history yet.
+        </div>`;
+      }
+    });
+}
+
 
         // --- UTILS ---
         function navToPickup(lat, lng) {
@@ -441,3 +477,4 @@
     </script>
 </body>
 </html>
+
