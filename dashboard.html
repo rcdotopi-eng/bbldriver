@@ -372,29 +372,29 @@
             alert("Sent Notification:\nI am coming (" + driverProfile.vehicle.model + ")");
         }
 
-        function completeRide() {
-            if(!confirm("Finish this ride?")) return;
-            
-            db.ref('requests/' + activeRideData.key).update({
-                status: 'completed'
-            }).then(() => {
-                document.getElementById('view-active-ride').classList.add('hidden');
-                switchTab('available'); 
-                addToHistory(activeRideData, 'completed');
-            });
-        }
+       function completeRide() {
+    if(!confirm("Finish this ride?")) return;
+    
+    db.ref('requests/' + activeRideData.key).update({
+        status: 'completed',
+        completedAt: firebase.database.ServerValue.TIMESTAMP
+    }).then(() => {
+        document.getElementById('view-active-ride').classList.add('hidden');
+        switchTab('history');
+    });
+}
 
         function cancelActiveRide() {
-            if(!confirm("Cancel this ride? Penalty may apply.")) return;
+    if(!confirm("Cancel this ride? Penalty may apply.")) return;
 
-            db.ref('requests/' + activeRideData.key).update({
-                status: 'cancelled_by_driver'
-            }).then(() => {
-                document.getElementById('view-active-ride').classList.add('hidden');
-                switchTab('available'); 
-                addToHistory(activeRideData, 'cancelled');
-            });
-        }
+    db.ref('requests/' + activeRideData.key).update({
+        status: 'cancelled_by_driver',
+        cancelledAt: firebase.database.ServerValue.TIMESTAMP
+    }).then(() => {
+        document.getElementById('view-active-ride').classList.add('hidden');
+        switchTab('history');
+    });
+}
 
         // --- 8. HISTORY LOGIC ---
         function startHistoryListener() {
@@ -427,7 +427,9 @@
               <div style="display:flex; justify-content:space-between;">
                 <strong style="color:${color}">${label}</strong>
                 <span style="font-size:12px;">
-                  ${new Date(r.timestamp).toLocaleTimeString()}
+                  ${new Date(
+  r.completedAt || r.cancelledAt || r.timestamp
+).toLocaleTimeString()}
                 </span>
               </div>
               <div style="margin-top:6px;">🟢 ${r.pickup}</div>
@@ -477,4 +479,5 @@
     </script>
 </body>
 </html>
+
 
